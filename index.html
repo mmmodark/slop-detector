@@ -243,7 +243,8 @@ async function diagnose() {
     {"orig":"문제있는 원문 문단","flagged":true,"note":"왜 문제인지 짧게","fix":"독자를 향하게 고쳐쓴 문단"}
   ]
 }
-checks의 id는 정확히 이 5개여야 한다: ${CHECK_IDS.join(", ")}.`;
+checks의 id는 정확히 이 5개여야 한다: ${CHECK_IDS.join(", ")}.
+반드시 순수 JSON만 출력하고, 마크다운·설명·백틱 없이. JSON 문자열 값 안에 줄바꿈 금지.`;
 
   try {
     const response = await fetch('/api/diagnose', {

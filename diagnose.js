@@ -16,44 +16,17 @@ export default async function handler(req, res) {
 
   const { passcode, prompt, article } = body || {};
 
-  if (!process.env.ACCESS_CODE) {
-    return res.status(500).json({ error: '설정 누락: ACCESS_CODE가 없습니다.' });
-  }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: '설정 누락: ANTHROPIC_API_KEY가 없습니다.' });
-  }
-  if (!passcode || passcode !== process.env.ACCESS_CODE) {
-    return res.status(401).json({ error: '비밀코드가 올바르지 않습니다.' });
-  }
-  if (!prompt || prompt.length < 10) {
-    return res.status(400).json({ error: '진단할 내용이 비어 있습니다.' });
-  }
+  if (!process.env.ACCESS_CODE) return res.status(500).json({ error: 'ACCESS_CODE 없음' });
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY 없음' });
+  if (!passcode || passcode !== process.env.ACCESS_CODE) return res.status(401).json({ error: '비밀코드가 올바르지 않습니다.' });
+  if (!prompt || prompt.length < 10) return res.status(400).json({ error: '진단할 내용이 비어 있습니다.' });
 
   try {
-    // 프롬프트(지시사항)와 글(원문)을 분리해서 Claude에게 보냄
-    // article이 있으면 system+user 분리, 없으면 기존 방식(ping 등)
-    const messages = article
-      ? [{ role: 'user', content: prompt + '\n\n글:\n"""\n' + article + '\n"""' }]
-      : [{ role: 'user', content: prompt }];
-
-    // article을 system prompt로 넣지 않고,
-    // 대신 JSON.stringify로 직렬화해서 Claude에게 안전하게 전달
-    const claudeBody = {
-      model: 'claude-sonnet-4-6',
-      max_tokens: 16000,
-      messages: article
-        ? [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: prompt },
-                { type: 'text', text: '진단할 글 (원문 그대로):' },
-                { type: 'text', text: article }
-              ]
-            }
-          ]
-        : [{ role: 'user', content: prompt }]
-    };
+    // 프롬프트와 글을 하나의 user 메시지로 합치되,
+    // article은 JSON.stringify로 안전하게 직렬화해서 특수문자 문제를 원천 차단
+    const fullPrompt = article
+      ? prompt + '\n\n진단할 글:\n' + article
+      : prompt;
 
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -62,7 +35,11 @@ export default async function handler(req, res) {
         'x-api-key': (process.env.ANTHROPIC_API_KEY || '').trim(),
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify(claudeBody)
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 16000,
+        messages: [{ role: 'user', content: fullPrompt }]
+      })
     });
 
     if (!r.ok) {
