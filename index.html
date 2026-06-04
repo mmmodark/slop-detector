@@ -257,7 +257,7 @@ checks의 id는 정확히 이 5개여야 한다: ${CHECK_IDS.join(", ")}.`;
     if (data.error) throw new Error(data.error + (data.detail ? ' — ' + String(data.detail).slice(0,160) : ''));
     let raw = (data.text || '').replace(/```json|```/g, '').trim();
     const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
-    if (s === -1 || e === -1) throw new Error('진단 형식을 읽지 못했어요. 다시 시도해 주세요.');
+    if (s === -1 || e === -1) throw new Error('Claude 응답 앞 300자: ' + raw.slice(0, 300));
     // JSON 문자열 밖의 실제 줄바꿈을 제거해서 파싱 안전하게
     let jsonStr = raw.slice(s, e + 1);
     let rr;
@@ -266,7 +266,11 @@ checks의 id는 정확히 이 5개여야 한다: ${CHECK_IDS.join(", ")}.`;
     } catch(pe) {
       // 파싱 실패 시 줄바꿈을 공백으로 바꿔서 재시도
       jsonStr = jsonStr.replace(/[\r\n]+/g, ' ');
-      rr = JSON.parse(jsonStr);
+      try {
+        rr = JSON.parse(jsonStr);
+      } catch(pe2) {
+        throw new Error('파싱 실패: ' + pe2.message + ' | JSON 앞 300자: ' + jsonStr.slice(0, 300));
+      }
     }
     history.push({ title: rr.title || '제목 없음', channel, checks: rr.checks.map(c=>({id:c.id,pass:c.pass})), date:new Date() });
     updateCount();
