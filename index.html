@@ -183,7 +183,10 @@ async function enter() {
       body: JSON.stringify({ passcode: code, prompt: 'ping: 코드 확인용. 짧게 ok 라고만 답해.' })
     });
     if (r.status === 401) { err.textContent = '비밀코드가 올바르지 않습니다.'; return; }
-    if (!r.ok) { err.textContent = '서버 연결 문제. 잠시 후 다시 시도해 주세요.'; return; }
+    if (!r.ok) { err.textContent = '서버 문제 (' + r.status + '). 잠시 후 다시 시도해 주세요.'; return; }
+    const d = await r.json();
+    // 다리가 코드는 통과시켰지만 Claude 호출에서 막힌 경우, 진짜 이유를 보여줌
+    if (d.error) { err.textContent = d.error + (d.detail ? ' — ' + String(d.detail).slice(0,120) : ''); return; }
     passcode = code;
     document.getElementById('gate').style.display = 'none';
     document.getElementById('app').style.display = 'block';
@@ -214,6 +217,14 @@ async function diagnose() {
   result.classList.remove('show'); result.innerHTML = '';
   loading.style.display = 'block';
 
+  // 특수문자·줄바꿈이 JSON을 깨뜨리지 않도록 미리 정리
+  const safeText = text
+    .replace(/\\/g, '\\\\')   // 백슬래시
+    .replace(/"/g, '\\"')     // 큰따옴표
+    .replace(/\r\n/g, '\\n')  // Windows 줄바꿈
+    .replace(/\n/g, '\\n')    // Unix 줄바꿈
+    .replace(/\r/g, '\\n');   // 나머지 줄바꿈
+
   const prompt = `너는 미디어 에디터 출신의 냉정한 글 편집자다. 아래 글을 "독자 관점"에서 진단하고, 문제 있는 문단을 직접 고쳐쓴다.
 채널: ${channel} / 의도한 독자: ${reader}
 
@@ -226,10 +237,11 @@ async function diagnose() {
 
 글:
 """
-${text}
+${safeText}
 """
 
-원문을 문단 단위로 나누고, 문제 있는 문단은 고쳐쓴다. 아래 JSON만 출력(백틱 없이):
+원문을 문단 단위로 나누고, 문제 있는 문단은 고쳐쓴다. 아래 JSON만 출력(백틱 없이).
+중요: JSON 문자열 값 안에 줄바꿈은 반드시 \\n으로, 큰따옴표는 \\"로 이스케이프해야 한다.
 {
   "title": "이 글을 5단어 이내로 요약한 제목",
   "verdict": "한 문장 핵심 진단. 직설적으로.",
@@ -256,10 +268,20 @@ checks의 id는 정확히 이 5개여야 한다: ${CHECK_IDS.join(", ")}.`;
     if (response.status === 401) throw new Error('비밀코드가 만료됐어요. 새로고침 후 다시 입장해 주세요.');
     if (!response.ok) throw new Error('통신 실패 (' + response.status + ')');
     const data = await response.json();
+    if (data.error) throw new Error(data.error + (data.detail ? ' — ' + String(data.detail).slice(0,160) : ''));
     let raw = (data.text || '').replace(/```json|```/g, '').trim();
     const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
     if (s === -1 || e === -1) throw new Error('진단 형식을 읽지 못했어요. 다시 시도해 주세요.');
-    const rr = JSON.parse(raw.slice(s, e + 1));
+    // JSON 문자열 밖의 실제 줄바꿈을 제거해서 파싱 안전하게
+    let jsonStr = raw.slice(s, e + 1);
+    let rr;
+    try {
+      rr = JSON.parse(jsonStr);
+    } catch(pe) {
+      // 파싱 실패 시 줄바꿈을 공백으로 바꿔서 재시도
+      jsonStr = jsonStr.replace(/[\r\n]+/g, ' ');
+      rr = JSON.parse(jsonStr);
+    }
     history.push({ title: rr.title || '제목 없음', channel, checks: rr.checks.map(c=>({id:c.id,pass:c.pass})), date:new Date() });
     updateCount();
     render(rr);
