@@ -109,6 +109,8 @@
   .hist-item:last-child { border:none; }
 
   .err { color:var(--warn); padding:16px; border:1px solid var(--warn); border-radius:2px; line-height:1.7; }
+  .new-diag-btn { margin-top:16px; width:100%; padding:16px; font-family:inherit; font-size:15px; font-weight:700; background:var(--paper); color:var(--ink); border:2px solid var(--ink); border-radius:2px; cursor:pointer; transition:all .2s; }
+  .new-diag-btn:hover { background:var(--ink); color:var(--paper); }
   .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--paper); padding:12px 24px; border-radius:2px; font-size:14px; opacity:0; transition:opacity .3s; pointer-events:none; z-index:999; }
   .toast.show { opacity:1; }
 </style>
@@ -359,8 +361,20 @@ function render(r, checkIds) {
     html += `</div>`;
   });
   html += `<button class="copy-all" onclick="copyText(this, ${JSON.stringify(fixedFull.join('\n\n')).replace(/"/g,'&quot;')})">고친 글 전체 복사</button>`;
+  html += `<button class="new-diag-btn" onclick="resetDiagnose()">+ 새 글 진단하기</button>`;
   result.innerHTML = html;
   result.classList.add('show');
+}
+
+function resetDiagnose() {
+  document.getElementById('input').value = '';
+  document.getElementById('counter').textContent = '100자 이상이면 진단할 수 있어요';
+  document.getElementById('counter').classList.remove('ready');
+  const result = document.getElementById('result');
+  result.classList.remove('show');
+  result.innerHTML = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setTimeout(() => document.getElementById('input').focus(), 400);
 }
 
 function renderPattern() {
@@ -368,46 +382,97 @@ function renderPattern() {
   if (history.length < 2) {
     v.innerHTML = `<div class="empty">
       <div class="big">아직 패턴을 볼 글이 부족해요</div>
-      글을 2편 이상 진단하면, 당신이 매번 어디서 독자를 잃는지 리포트가 나타나요.<br>지금까지 ${history.length}편 진단했어요.
+      글을 2편 이상 진단하면, 당신이 매번 어디서 독자를 잃는지 리포트를 받을 수 있어요.<br>지금까지 ${history.length}편 진단했어요.
     </div>`;
     return;
   }
-  // 채널별로 그룹핑해서 패턴 보여주기
-  const channels = [...new Set(history.map(h=>h.channel))];
-  let html = '';
 
-  // 전체 패턴
-  const allIds = [...new Set(history.flatMap(h=>h.checks.map(c=>c.id)))];
+  let html = `<div class="pat-card">
+    <div class="pat-headline" style="color:var(--ink)">패턴 분석에 포함할 글을 선택하세요 (2편 이상)</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">선택한 글들만 가지고 내 패턴을 분석해요.</div>`;
+
+  history.slice().reverse().forEach((h, i) => {
+    const realIdx = history.length - 1 - i;
+    const fails = h.checks.filter(c=>!c.pass).map(c=>c.id);
+    html += `<div class="hist-item" style="align-items:center;">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;">
+        <input type="checkbox" class="pat-check" data-idx="${realIdx}" style="width:16px;height:16px;cursor:pointer;" onchange="updatePatternBtn()">
+        <span>
+          <span style="font-weight:600;">${esc(h.title)}</span>
+          <span style="color:var(--muted);font-size:13px;"> · ${h.channel}</span>
+          <br>
+          <span style="font-size:12px;color:${fails.length?'var(--warn)':'var(--good)'};">${fails.length ? fails.join(', ')+' 걸림' : '모두 통과'}</span>
+        </span>
+      </label>
+    </div>`;
+  });
+
+  html += `<button class="run" id="patAnalyzeBtn" onclick="analyzePattern()" disabled style="margin-top:16px;opacity:.4;">
+    선택한 글로 패턴 분석
+  </button>`;
+  html += `</div>`;
+  html += `<div id="patResult"></div>`;
+  v.innerHTML = html;
+}
+
+function updatePatternBtn() {
+  const checked = document.querySelectorAll('.pat-check:checked').length;
+  const btn = document.getElementById('patAnalyzeBtn');
+  if (!btn) return;
+  btn.disabled = checked < 2;
+  btn.style.opacity = checked < 2 ? '.4' : '1';
+  btn.textContent = checked < 2
+    ? `선택한 글로 패턴 분석 (${checked}편 선택됨 · 최소 2편)`
+    : `선택한 글로 패턴 분석 (${checked}편)`;
+}
+
+function analyzePattern() {
+  const checked = [...document.querySelectorAll('.pat-check:checked')];
+  const selected = checked.map(cb => history[parseInt(cb.dataset.idx)]);
+
+  // 선택한 글들의 fails 집계
+  const allIds = [...new Set(selected.flatMap(h => h.checks.map(c => c.id)))];
   const failRate = {};
   allIds.forEach(id => failRate[id] = 0);
-  history.forEach(h => h.checks.forEach(c => { if(!c.pass && failRate[c.id]!==undefined) failRate[c.id]++; }));
-  const total = history.length;
-  const worst = allIds.slice().sort((a,b)=>failRate[b]-failRate[a])[0];
-  const worstPct = Math.round(failRate[worst]/total*100);
+  selected.forEach(h => h.checks.forEach(c => {
+    if (!c.pass && failRate[c.id] !== undefined) failRate[c.id]++;
+  }));
+  const total = selected.length;
+  const sorted = allIds.slice().sort((a,b) => failRate[b] - failRate[a]);
+  const worst = sorted[0];
+  const worstPct = Math.round(failRate[worst] / total * 100);
+  const best = sorted[sorted.length - 1];
 
-  html += `<div class="pat-card">
-    <div class="pat-headline">${total}편 진단 중, 「${esc(worst)}」에서 가장 자주 독자를 잃어요 (${worstPct}%).</div>`;
-  allIds.forEach(id => {
-    const pct = Math.round(failRate[id]/total*100);
+  let html = `<div class="pat-card">
+    <div class="pat-headline">선택한 ${total}편에서 발견한 당신의 패턴</div>`;
+
+  // 핵심 한 줄
+  html += `<div style="font-size:16px;line-height:1.7;margin-bottom:20px;padding:16px;background:var(--accent-soft);border-left:4px solid var(--accent);font-family:'Gowun Batang',serif;">
+    당신은 <b>「${esc(worst)}」</b>에서 가장 자주 독자를 잃어요.
+    ${worstPct === 100 ? '선택한 글 전부에서 이 항목이 걸렸어요.' : `${total}편 중 ${failRate[worst]}편에서 걸렸어요 (${worstPct}%).`}
+  </div>`;
+
+  // 항목별 바
+  sorted.forEach(id => {
+    const pct = Math.round(failRate[id] / total * 100);
+    const passCount = total - failRate[id];
     html += `<div class="bar-row">
       <div class="bar-label">${esc(id)}</div>
       <div class="bar-track"><div class="bar-fill ${pct<40?'ok':''}" style="width:${Math.max(pct,6)}%">${pct}%</div></div>
     </div>
-    <div class="hist">${total-failRate[id]}/${total}편 통과</div>`;
+    <div class="hist">${passCount}/${total}편 통과</div>`;
   });
-  html += `</div>`;
 
-  // 진단 기록
-  html += `<div class="pat-card"><div class="pat-headline" style="color:var(--ink)">진단 기록</div>`;
-  history.slice().reverse().forEach(h => {
-    const fails = h.checks.filter(c=>!c.pass).map(c=>c.id);
-    html += `<div class="hist-item">
-      <span>${esc(h.title)} <span style="color:var(--muted)">· ${h.channel}</span></span>
-      <span style="color:${fails.length?'var(--warn)':'var(--good)'}">${fails.length ? fails.join(', ')+' 걸림' : '모두 통과'}</span>
+  // 잘하는 것도 보여주기
+  if (failRate[best] === 0) {
+    html += `<div style="margin-top:16px;padding:12px 16px;background:var(--paper-deep);border-radius:2px;font-size:14px;">
+      💪 <b>「${esc(best)}」</b>는 선택한 글 전부에서 통과했어요. 이게 당신의 강점이에요.
     </div>`;
-  });
+  }
+
   html += `</div>`;
-  v.innerHTML = html;
+  document.getElementById('patResult').innerHTML = html;
+  document.getElementById('patResult').scrollIntoView({ behavior: 'smooth' });
 }
 
 function updateCount() {
