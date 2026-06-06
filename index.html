@@ -64,13 +64,21 @@
   button.run:active { transform:translateY(2px); }
   button.run:disabled { opacity:.5; cursor:not-allowed; }
 
-  .loading { text-align:center; padding:40px 0; color:var(--muted); font-size:15px; }
-  .loading .dot { animation:blink 1.4s infinite; }
-  .loading .dot:nth-child(2){animation-delay:.2s} .loading .dot:nth-child(3){animation-delay:.4s}
-  @keyframes blink { 0%,60%,100%{opacity:.2} 30%{opacity:1} }
+  .loading { text-align:center; padding:40px 24px; color:var(--muted); font-size:15px; }
+  .loading-timer { font-family:'Gowun Batang',serif; font-size:36px; font-weight:700; color:var(--ink); margin-bottom:8px; }
+  .loading-label { font-size:14px; color:var(--muted); margin-bottom:28px; }
+  .loading-tip { background:#fbf8f1; border:1.5px solid var(--line); border-radius:2px; padding:20px 24px; max-width:480px; margin:0 auto; text-align:left; min-height:80px; }
+  .loading-tip .tip-tag { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--accent); font-weight:600; margin-bottom:8px; }
+  .loading-tip .tip-text { font-family:'Gowun Batang',serif; font-size:16px; line-height:1.7; color:var(--ink); }
+  .tip-dots { display:flex; justify-content:center; gap:6px; margin-top:16px; }
+  .tip-dot { width:6px; height:6px; border-radius:50%; background:var(--line); transition:background .3s; }
+  .tip-dot.active { background:var(--accent); }
 
   #result { display:none; }
   #result.show { display:block; animation:rise .5s ease both; }
+  .loading .dot { animation:blink 1.4s infinite; }
+  .loading .dot:nth-child(2){animation-delay:.2s} .loading .dot:nth-child(3){animation-delay:.4s}
+  @keyframes blink { 0%,60%,100%{opacity:.2} 30%{opacity:1} }
   @keyframes rise { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
 
   .verdict { font-family:'Gowun Batang',serif; font-size:22px; font-weight:700; line-height:1.5; padding:24px 28px; margin-bottom:28px; border-left:5px solid var(--accent); background:var(--accent-soft); }
@@ -160,7 +168,17 @@
 
         <button class="run" id="runBtn" onclick="diagnose()">독자 입장에서 읽어줘</button>
       </div>
-      <div id="loading" class="loading" style="display:none">독자 입장에서 읽는 중<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
+      <div id="loading" style="display:none">
+        <div class="loading">
+          <div class="loading-timer" id="loadingTimer">0초</div>
+          <div class="loading-label">독자 입장에서 읽는 중이에요</div>
+          <div class="loading-tip">
+            <div class="tip-tag">잠깐 팁 💡</div>
+            <div class="tip-text" id="tipText"></div>
+          </div>
+          <div class="tip-dots" id="tipDots"></div>
+        </div>
+      </div>
       <div id="result"></div>
     </div>
 
@@ -171,7 +189,84 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// 채널별 진단 기준 및 힌트
+// 채널별 로딩 팁
+const CHANNEL_TIPS = {
+  '블로그': [
+    '첫 문단이 전부예요. 독자는 3초 안에 이 글을 읽을지 결정해요.',
+    '소제목은 독자가 "여기서 뭘 얻는가"를 예고하는 간판이에요.',
+    '글 끝에 독자가 취할 행동이나 질문이 없으면, 읽고 나서 기억에 안 남아요.',
+    '구체적인 숫자 하나가 추상적인 주장 열 개보다 강해요.',
+    '"내가 겪었다"는 경험이 "이렇게 해야 한다"는 조언보다 더 읽혀요.'
+  ],
+  '링크드인': [
+    '"더 보기" 버튼 앞, 첫 두 줄이 전부예요. 거기서 독자를 못 잡으면 끝이에요.',
+    '"배운 점 3가지" 구조는 AI가 쓴 글처럼 보여요. 피하는 게 좋아요.',
+    '자기 자랑보다 자기 실패담이 더 많이 저장돼요.',
+    '댓글 달고 싶은 포인트를 하나 남겨두세요. 질문이나 열린 결말이요.',
+    '구체적인 날짜, 숫자, 장면이 있는 글이 공감을 더 많이 받아요.'
+  ],
+  '인스타그램': [
+    '피드에서 보이는 첫 줄, 15단어 안에 핵심이 있어야 해요.',
+    '저장 버튼을 누르게 만드는 글은 "나중에 다시 보고 싶은 것"이에요.',
+    '캡션이 길어도 되지만, 핵심은 항상 앞에 있어야 해요.',
+    '"나도 이래"가 나오는 글이 "대단하다"가 나오는 글보다 더 공유돼요.',
+    '광고처럼 보이는 순간 스크롤이 넘어가요. 진짜 목소리가 중요해요.'
+  ],
+  '스레드': [
+    '스레드는 너무 다듬으면 죽어요. 날것의 솔직함이 강점이에요.',
+    '핵심이 한 문장으로 읽혀야 해요. 두 가지를 담으려 하면 흐릿해져요.',
+    '"근데 왜?" 또는 "나도 이래"가 나오면 댓글이 달려요.',
+    '완성된 결론보다 진행 중인 고민이 더 대화를 불러요.',
+    '짧을수록 좋아요. 읽다가 멈추게 만드는 한 줄이 목표예요.'
+  ]
+};
+
+let loadingTimerInterval = null;
+let loadingTipInterval = null;
+let currentTipIdx = 0;
+
+function startLoading() {
+  const tips = CHANNEL_TIPS[selectedChannel] || CHANNEL_TIPS['블로그'];
+  currentTipIdx = 0;
+
+  // 타이머
+  let seconds = 0;
+  document.getElementById('loadingTimer').textContent = '0초';
+  clearInterval(loadingTimerInterval);
+  loadingTimerInterval = setInterval(() => {
+    seconds++;
+    document.getElementById('loadingTimer').textContent = `${seconds}초`;
+  }, 1000);
+
+  // 팁 dots 초기화
+  const dotsEl = document.getElementById('tipDots');
+  dotsEl.innerHTML = tips.map((_, i) =>
+    `<div class="tip-dot ${i===0?'active':''}" id="tipDot${i}"></div>`
+  ).join('');
+
+  // 첫 팁
+  document.getElementById('tipText').textContent = tips[currentTipIdx];
+
+  // 팁 슬라이드
+  clearInterval(loadingTipInterval);
+  loadingTipInterval = setInterval(() => {
+    document.getElementById(`tipDot${currentTipIdx}`).classList.remove('active');
+    currentTipIdx = (currentTipIdx + 1) % tips.length;
+    document.getElementById(`tipDot${currentTipIdx}`).classList.add('active');
+    const tipEl = document.getElementById('tipText');
+    tipEl.style.opacity = '0';
+    setTimeout(() => {
+      tipEl.textContent = tips[currentTipIdx];
+      tipEl.style.transition = 'opacity .4s';
+      tipEl.style.opacity = '1';
+    }, 300);
+  }, 4000);
+}
+
+function stopLoading() {
+  clearInterval(loadingTimerInterval);
+  clearInterval(loadingTipInterval);
+}
 const CHANNEL_CONFIG = {
   '블로그': {
     hint: '긴 글, 에세이 형식. 구조와 흐름이 중요하고 독자가 끝까지 읽게 만드는가가 핵심이에요.',
@@ -265,6 +360,7 @@ async function diagnose() {
   btn.disabled = true;
   result.classList.remove('show'); result.innerHTML = '';
   loading.style.display = 'block';
+  startLoading();
 
   const checkIdsStr = cfg.checkIds.join(', ');
 
@@ -316,10 +412,23 @@ checks의 id는 반드시 이 순서 그대로: ${checkIdsStr}`;
       try { rr = JSON.parse(jsonStr); }
       catch(pe2) { throw new Error('결과 형식 오류. 다시 눌러보세요.'); }
     }
+    // 원문에서 첫 문단과 flagged 문단들만 뽑아서 저장 (패턴 분석용)
+    const firstPara = (rr.paragraphs||[])[0]?.orig || '';
+    const flaggedParas = (rr.paragraphs||[])
+      .filter(p => p.flagged)
+      .map(p => ({ orig: p.orig, fix: p.fix, note: p.note }));
+    const strongParas = (rr.paragraphs||[])
+      .filter(p => !p.flagged && p.orig.length > 20)
+      .slice(0, 2)
+      .map(p => p.orig);
+
     history.push({
       title: rr.title || '제목 없음',
       channel: selectedChannel,
-      checks: rr.checks.map(c=>({id:c.id, pass:c.pass})),
+      checks: rr.checks.map(c=>({id:c.id, pass:c.pass, comment:c.comment})),
+      firstPara,
+      flaggedParas,
+      strongParas,
       date: new Date()
     });
     updateCount();
@@ -332,6 +441,7 @@ checks의 id는 반드시 이 순서 그대로: ${checkIdsStr}`;
   } finally {
     btn.disabled = false;
     loading.style.display = 'none';
+    stopLoading();
   }
 }
 
@@ -426,11 +536,11 @@ function updatePatternBtn() {
     : `선택한 글로 패턴 분석 (${checked}편)`;
 }
 
-function analyzePattern() {
+async function analyzePattern() {
   const checked = [...document.querySelectorAll('.pat-check:checked')];
   const selected = checked.map(cb => history[parseInt(cb.dataset.idx)]);
 
-  // 선택한 글들의 fails 집계
+  // 집계
   const allIds = [...new Set(selected.flatMap(h => h.checks.map(c => c.id)))];
   const failRate = {};
   allIds.forEach(id => failRate[id] = 0);
@@ -442,17 +552,15 @@ function analyzePattern() {
   const worst = sorted[0];
   const worstPct = Math.round(failRate[worst] / total * 100);
   const best = sorted[sorted.length - 1];
+  const bestFailed = failRate[best] > 0;
 
+  // 막대그래프 먼저 보여주기
   let html = `<div class="pat-card">
-    <div class="pat-headline">선택한 ${total}편에서 발견한 당신의 패턴</div>`;
-
-  // 핵심 한 줄
-  html += `<div style="font-size:16px;line-height:1.7;margin-bottom:20px;padding:16px;background:var(--accent-soft);border-left:4px solid var(--accent);font-family:'Gowun Batang',serif;">
-    당신은 <b>「${esc(worst)}」</b>에서 가장 자주 독자를 잃어요.
-    ${worstPct === 100 ? '선택한 글 전부에서 이 항목이 걸렸어요.' : `${total}편 중 ${failRate[worst]}편에서 걸렸어요 (${worstPct}%).`}
-  </div>`;
-
-  // 항목별 바
+    <div class="pat-headline">선택한 ${total}편에서 발견한 당신의 패턴</div>
+    <div style="font-size:16px;line-height:1.7;margin-bottom:20px;padding:16px;background:var(--accent-soft);border-left:4px solid var(--accent);font-family:'Gowun Batang',serif;">
+      당신은 <b>「${esc(worst)}」</b>에서 가장 자주 독자를 잃어요.
+      ${worstPct === 100 ? '선택한 글 전부에서 이 항목이 걸렸어요.' : `${total}편 중 ${failRate[worst]}편에서 걸렸어요 (${worstPct}%).`}
+    </div>`;
   sorted.forEach(id => {
     const pct = Math.round(failRate[id] / total * 100);
     const passCount = total - failRate[id];
@@ -462,17 +570,128 @@ function analyzePattern() {
     </div>
     <div class="hist">${passCount}/${total}편 통과</div>`;
   });
-
-  // 잘하는 것도 보여주기
-  if (failRate[best] === 0) {
-    html += `<div style="margin-top:16px;padding:12px 16px;background:var(--paper-deep);border-radius:2px;font-size:14px;">
-      💪 <b>「${esc(best)}」</b>는 선택한 글 전부에서 통과했어요. 이게 당신의 강점이에요.
-    </div>`;
-  }
-
   html += `</div>`;
+  html += `<div id="patDeepResult"><div class="loading" style="padding:32px;text-align:center;color:var(--muted);">당신의 글에서 직접 찾는 중<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div></div>`;
   document.getElementById('patResult').innerHTML = html;
   document.getElementById('patResult').scrollIntoView({ behavior: 'smooth' });
+
+  // Claude한테 넘길 데이터 구성
+  const articleSummaries = selected.map((h, i) => {
+    const failedItems = h.checks.filter(c=>!c.pass).map(c=>c.id);
+    const passedItems = h.checks.filter(c=>c.pass).map(c=>c.id);
+    return `[글 ${i+1}] 제목: ${h.title} / 채널: ${h.channel}
+걸린 항목: ${failedItems.join(', ') || '없음'}
+통과 항목: ${passedItems.join(', ') || '없음'}
+첫 문단: "${h.firstPara}"
+문제 있던 문단 예시: ${h.flaggedParas.slice(0,2).map(p=>`"${p.orig}" → 고친 제안: "${p.fix}"`).join(' / ')}
+잘 쓴 문단 예시: ${h.strongParas.map(p=>`"${p}"`).join(' / ') || '없음'}`;
+  }).join('\n\n');
+
+  const patternPrompt = `너는 자기 경험을 SNS에 기록하는 사람들의 글을 오래 읽어온 편집자다.
+아래는 한 사람이 쓴 ${total}편의 글 진단 결과야. 이 사람의 글쓰기 패턴을 분석해서 구체적인 리포트를 줘.
+
+진단 데이터:
+${articleSummaries}
+
+패턴 요약:
+- 가장 자주 걸린 항목: ${worst} (${worstPct}%)
+- ${bestFailed ? `모든 항목에서 걸림이 있었음` : `강점 항목: ${best} (전 편 통과)`}
+
+아래 JSON만 출력 (백틱·설명 없이):
+{
+  "weakness_analysis": {
+    "title": "약점 집중 분석 제목 (예: '당신의 글은 왜 첫 줄에서 독자를 잃는가')",
+    "body": "이 사람의 글에서 직접 찾은 근거를 들어 왜 이 항목이 반복적으로 걸리는지 설명. 일반론 금지. 반드시 위 글 데이터에서 구체적인 문장이나 패턴을 인용해서 말할 것.",
+    "before": "이 사람의 실제 글에서 문제가 된 문장 또는 문단 (짧게)",
+    "after": "그 문장을 독자한테 닿게 고친 제안",
+    "why": "왜 고친 버전이 더 잘 닿는지 이유 (예시와 함께 설명. '더 구체적이기 때문' 같은 광범위한 말 금지)"
+  },
+  "strength_analysis": {
+    "title": "강점 활용법 제목",
+    "body": "이 사람이 잘하는 것을 실제 글에서 찾아서 설명. 그 강점이 지금 어디서 낭비되고 있는지, 어떻게 하면 더 앞으로 당길 수 있는지 구체적으로.",
+    "example": "강점이 잘 발휘된 실제 문장 인용",
+    "suggestion": "이 강점을 더 잘 살리는 구체적인 방법"
+  },
+  "next_action": {
+    "title": "다음 글 쓸 때 딱 하나만",
+    "action": "매우 구체적인 행동 하나. '더 잘 써보세요' 같은 말 절대 금지. 예: '다음 글 초안을 다 쓰고 나서, 가장 구체적인 숫자나 장면이 있는 문장을 찾아 첫 줄로 올려보세요.'",
+    "reason": "왜 이게 이 사람한테 지금 당장 필요한지"
+  }
+}`;
+
+  try {
+    const response = await fetch('/api/diagnose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode, prompt: patternPrompt })
+    });
+    if (!response.ok) throw new Error('통신 실패');
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    let raw = (data.text || '').replace(/```json|```/g, '').trim();
+    const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+    if (s === -1 || e === -1) throw new Error('응답 형식 오류');
+    let rr;
+    try { rr = JSON.parse(raw.slice(s, e+1)); }
+    catch(pe) {
+      const cleaned = raw.slice(s, e+1).replace(/[\r\n]+/g, ' ');
+      rr = JSON.parse(cleaned);
+    }
+    renderPatternDeep(rr);
+  } catch(err) {
+    document.getElementById('patDeepResult').innerHTML =
+      `<div class="err">리포트를 불러오지 못했어요: ${esc(err.message)}</div>`;
+  }
+}
+
+function renderPatternDeep(r) {
+  const w = r.weakness_analysis;
+  const s = r.strength_analysis;
+  const n = r.next_action;
+
+  let html = '';
+
+  // 약점 집중 분석
+  html += `<div class="pat-card">
+    <div class="pat-headline">${esc(w.title)}</div>
+    <p style="font-size:15px;line-height:1.8;margin-bottom:20px;color:#4a443c;">${esc(w.body)}</p>
+    <div class="para flagged">
+      <div class="para-orig" style="opacity:.55;">${esc(w.before)}</div>
+      <div class="para-note">↓ 이렇게 바꾸면</div>
+      <div class="para-fix">
+        <div class="lbl">제안</div>
+        <div class="txt">${esc(w.after)}</div>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding:14px 16px;background:var(--paper-deep);border-radius:2px;font-size:14px;line-height:1.7;">
+      <b>왜 더 잘 닿는가</b><br>${esc(w.why)}
+    </div>
+  </div>`;
+
+  // 강점 활용법
+  html += `<div class="pat-card">
+    <div class="pat-headline">${esc(s.title)}</div>
+    <p style="font-size:15px;line-height:1.8;margin-bottom:16px;color:#4a443c;">${esc(s.body)}</p>
+    <div style="padding:14px 18px;background:var(--paper);border:1.5px solid var(--line);border-radius:2px;font-family:'Gowun Batang',serif;font-size:15px;line-height:1.8;margin-bottom:14px;">
+      "${esc(s.example)}"
+    </div>
+    <div style="padding:14px 16px;background:var(--paper-deep);border-radius:2px;font-size:14px;line-height:1.7;">
+      <b>이렇게 살려보세요</b><br>${esc(s.suggestion)}
+    </div>
+  </div>`;
+
+  // 다음 글 딱 하나
+  html += `<div class="pat-card" style="border-color:var(--ink);border-width:2px;">
+    <div class="kicker" style="margin-bottom:10px;">다음 글 쓸 때 딱 하나만</div>
+    <div class="pat-headline" style="color:var(--ink);margin-bottom:14px;">${esc(n.title)}</div>
+    <div style="font-family:'Gowun Batang',serif;font-size:18px;line-height:1.8;padding:18px;background:var(--accent-soft);border-left:5px solid var(--accent);margin-bottom:14px;">
+      ${esc(n.action)}
+    </div>
+    <p style="font-size:14px;color:var(--muted);line-height:1.7;">${esc(n.reason)}</p>
+  </div>`;
+
+  document.getElementById('patDeepResult').innerHTML = html;
+  document.getElementById('patDeepResult').scrollIntoView({ behavior: 'smooth' });
 }
 
 function updateCount() {
