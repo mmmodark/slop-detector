@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>전지적독자시점</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&display=swap');
   :root {
@@ -64,15 +65,9 @@
   button.run:active { transform:translateY(2px); }
   button.run:disabled { opacity:.5; cursor:not-allowed; }
 
-  .loading { text-align:center; padding:40px 24px; color:var(--muted); font-size:15px; }
-  .loading-timer { font-family:'Gowun Batang',serif; font-size:36px; font-weight:700; color:var(--ink); margin-bottom:8px; }
-  .loading-label { font-size:14px; color:var(--muted); margin-bottom:28px; }
-  .loading-tip { background:#fbf8f1; border:1.5px solid var(--line); border-radius:2px; padding:20px 24px; max-width:480px; margin:0 auto; text-align:left; min-height:80px; }
-  .loading-tip .tip-tag { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--accent); font-weight:600; margin-bottom:8px; }
-  .loading-tip .tip-text { font-family:'Gowun Batang',serif; font-size:16px; line-height:1.7; color:var(--ink); }
-  .tip-dots { display:flex; justify-content:center; gap:6px; margin-top:16px; }
-  .tip-dot { width:6px; height:6px; border-radius:50%; background:var(--line); transition:background .3s; }
-  .tip-dot.active { background:var(--accent); }
+  .loading { text-align:center; padding:48px 24px; color:var(--muted); font-size:15px; }
+  .loading-label { font-family:'Gowun Batang',serif; font-size:20px; color:var(--ink); margin-bottom:10px; }
+  .loading-sub { font-size:14px; color:var(--muted); }
 
   #result { display:none; }
   #result.show { display:block; animation:rise .5s ease both; }
@@ -170,13 +165,8 @@
       </div>
       <div id="loading" style="display:none">
         <div class="loading">
-          <div class="loading-timer" id="loadingTimer">0초</div>
-          <div class="loading-label">독자 입장에서 읽는 중이에요</div>
-          <div class="loading-tip">
-            <div class="tip-tag">잠깐 팁 💡</div>
-            <div class="tip-text" id="tipText"></div>
-          </div>
-          <div class="tip-dots" id="tipDots"></div>
+          <div class="loading-label">독자 입장에서 읽는 중이에요<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
+          <div class="loading-sub">글 길이에 따라 5~15초 정도 걸려요</div>
         </div>
       </div>
       <div id="result"></div>
@@ -189,84 +179,8 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// 채널별 로딩 팁
-const CHANNEL_TIPS = {
-  '블로그': [
-    '첫 문단이 전부예요. 독자는 3초 안에 이 글을 읽을지 결정해요.',
-    '소제목은 독자가 "여기서 뭘 얻는가"를 예고하는 간판이에요.',
-    '글 끝에 독자가 취할 행동이나 질문이 없으면, 읽고 나서 기억에 안 남아요.',
-    '구체적인 숫자 하나가 추상적인 주장 열 개보다 강해요.',
-    '"내가 겪었다"는 경험이 "이렇게 해야 한다"는 조언보다 더 읽혀요.'
-  ],
-  '링크드인': [
-    '"더 보기" 버튼 앞, 첫 두 줄이 전부예요. 거기서 독자를 못 잡으면 끝이에요.',
-    '"배운 점 3가지" 구조는 AI가 쓴 글처럼 보여요. 피하는 게 좋아요.',
-    '자기 자랑보다 자기 실패담이 더 많이 저장돼요.',
-    '댓글 달고 싶은 포인트를 하나 남겨두세요. 질문이나 열린 결말이요.',
-    '구체적인 날짜, 숫자, 장면이 있는 글이 공감을 더 많이 받아요.'
-  ],
-  '인스타그램': [
-    '피드에서 보이는 첫 줄, 15단어 안에 핵심이 있어야 해요.',
-    '저장 버튼을 누르게 만드는 글은 "나중에 다시 보고 싶은 것"이에요.',
-    '캡션이 길어도 되지만, 핵심은 항상 앞에 있어야 해요.',
-    '"나도 이래"가 나오는 글이 "대단하다"가 나오는 글보다 더 공유돼요.',
-    '광고처럼 보이는 순간 스크롤이 넘어가요. 진짜 목소리가 중요해요.'
-  ],
-  '스레드': [
-    '스레드는 너무 다듬으면 죽어요. 날것의 솔직함이 강점이에요.',
-    '핵심이 한 문장으로 읽혀야 해요. 두 가지를 담으려 하면 흐릿해져요.',
-    '"근데 왜?" 또는 "나도 이래"가 나오면 댓글이 달려요.',
-    '완성된 결론보다 진행 중인 고민이 더 대화를 불러요.',
-    '짧을수록 좋아요. 읽다가 멈추게 만드는 한 줄이 목표예요.'
-  ]
-};
-
-let loadingTimerInterval = null;
-let loadingTipInterval = null;
-let currentTipIdx = 0;
-
-function startLoading() {
-  const tips = CHANNEL_TIPS[selectedChannel] || CHANNEL_TIPS['블로그'];
-  currentTipIdx = 0;
-
-  // 타이머
-  let seconds = 0;
-  document.getElementById('loadingTimer').textContent = '0초';
-  clearInterval(loadingTimerInterval);
-  loadingTimerInterval = setInterval(() => {
-    seconds++;
-    document.getElementById('loadingTimer').textContent = `${seconds}초`;
-  }, 1000);
-
-  // 팁 dots 초기화
-  const dotsEl = document.getElementById('tipDots');
-  dotsEl.innerHTML = tips.map((_, i) =>
-    `<div class="tip-dot ${i===0?'active':''}" id="tipDot${i}"></div>`
-  ).join('');
-
-  // 첫 팁
-  document.getElementById('tipText').textContent = tips[currentTipIdx];
-
-  // 팁 슬라이드
-  clearInterval(loadingTipInterval);
-  loadingTipInterval = setInterval(() => {
-    document.getElementById(`tipDot${currentTipIdx}`).classList.remove('active');
-    currentTipIdx = (currentTipIdx + 1) % tips.length;
-    document.getElementById(`tipDot${currentTipIdx}`).classList.add('active');
-    const tipEl = document.getElementById('tipText');
-    tipEl.style.opacity = '0';
-    setTimeout(() => {
-      tipEl.textContent = tips[currentTipIdx];
-      tipEl.style.transition = 'opacity .4s';
-      tipEl.style.opacity = '1';
-    }, 300);
-  }, 4000);
-}
-
-function stopLoading() {
-  clearInterval(loadingTimerInterval);
-  clearInterval(loadingTipInterval);
-}
+function startLoading() {}
+function stopLoading() {}
 const CHANNEL_CONFIG = {
   '블로그': {
     hint: '긴 글, 에세이 형식. 구조와 흐름이 중요하고 독자가 끝까지 읽게 만드는가가 핵심이에요.',
@@ -498,8 +412,14 @@ function renderPattern() {
   }
 
   let html = `<div class="pat-card">
-    <div class="pat-headline" style="color:var(--ink)">패턴 분석에 포함할 글을 선택하세요 (2편 이상)</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">선택한 글들만 가지고 내 패턴을 분석해요.</div>`;
+    <div class="pat-headline" style="color:var(--ink)">패턴 분석에 포함할 글을 선택하세요</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">선택한 글들만 가지고 내 패턴을 분석해요. 3편 이상 선택하면 분석 정확도가 올라가요.</div>
+
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);margin-bottom:8px;">
+      <input type="checkbox" id="selectAllCheck" style="width:16px;height:16px;cursor:pointer;" onchange="toggleSelectAll(this)">
+      <label for="selectAllCheck" style="font-size:14px;font-weight:600;cursor:pointer;">전체 선택</label>
+      <span id="selectWarning" style="font-size:12px;color:var(--warn);margin-left:8px;display:none;">10편 이상은 분석 품질이 낮아질 수 있어요</span>
+    </div>`;
 
   history.slice().reverse().forEach((h, i) => {
     const realIdx = history.length - 1 - i;
@@ -517,6 +437,7 @@ function renderPattern() {
     </div>`;
   });
 
+  html += `<div id="patSelectHint" style="font-size:12px;color:var(--muted);margin-top:12px;min-height:16px;"></div>`;
   html += `<button class="run" id="patAnalyzeBtn" onclick="analyzePattern()" disabled style="margin-top:16px;opacity:.4;">
     선택한 글로 패턴 분석
   </button>`;
@@ -526,14 +447,44 @@ function renderPattern() {
 }
 
 function updatePatternBtn() {
-  const checked = document.querySelectorAll('.pat-check:checked').length;
+  const checks = document.querySelectorAll('.pat-check');
+  const checkedEls = document.querySelectorAll('.pat-check:checked');
+  const checked = checkedEls.length;
   const btn = document.getElementById('patAnalyzeBtn');
+  const hint = document.getElementById('patSelectHint');
+  const warning = document.getElementById('selectWarning');
+  const allCheck = document.getElementById('selectAllCheck');
   if (!btn) return;
+
+  // 전체 선택 체크박스 동기화
+  if (allCheck) {
+    allCheck.indeterminate = checked > 0 && checked < checks.length;
+    allCheck.checked = checked === checks.length && checks.length > 0;
+  }
+
+  // 10편 이상 경고
+  if (warning) warning.style.display = checked >= 10 ? 'inline' : 'none';
+
+  // 2편 미만이면 버튼 비활성
   btn.disabled = checked < 2;
   btn.style.opacity = checked < 2 ? '.4' : '1';
+
+  // 안내 문구
+  if (hint) {
+    if (checked === 0) hint.textContent = '';
+    else if (checked < 3) hint.textContent = `💡 3편 이상 선택하면 분석 정확도가 더 높아져요 (지금 ${checked}편 선택됨)`;
+    else hint.textContent = `${checked}편 선택됨`;
+  }
+
   btn.textContent = checked < 2
-    ? `선택한 글로 패턴 분석 (${checked}편 선택됨 · 최소 2편)`
+    ? `선택한 글로 패턴 분석 (최소 2편 선택 필요)`
     : `선택한 글로 패턴 분석 (${checked}편)`;
+}
+
+function toggleSelectAll(el) {
+  const checks = document.querySelectorAll('.pat-check');
+  checks.forEach(c => c.checked = el.checked);
+  updatePatternBtn();
 }
 
 async function analyzePattern() {
@@ -692,6 +643,14 @@ function renderPatternDeep(r) {
 
   document.getElementById('patDeepResult').innerHTML = html;
   document.getElementById('patDeepResult').scrollIntoView({ behavior: 'smooth' });
+
+  // PDF 저장 버튼 추가
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'new-diag-btn';
+  saveBtn.style.cssText = 'margin-top:8px;background:var(--ink);color:var(--paper);border-color:var(--ink);';
+  saveBtn.textContent = '📄 패턴 분석 리포트 저장 (PDF)';
+  saveBtn.onclick = () => savePatternPDF(r);
+  document.getElementById('patDeepResult').appendChild(saveBtn);
 }
 
 function updateCount() {
@@ -721,7 +680,185 @@ function showToast(m) {
   setTimeout(() => t.classList.remove('show'), 2400);
 }
 
-function esc(s) {
+function savePatternPDF(r) {
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) { showToast('PDF 라이브러리 로딩 중이에요. 잠시 후 다시 눌러보세요.'); return; }
+
+  const w = r.weakness_analysis;
+  const s = r.strength_analysis;
+  const n = r.next_action;
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  const contentW = pageW - margin * 2;
+  let y = margin;
+
+  // 색상 팔레트
+  const INK    = [26,  23,  20];
+  const ACCENT = [193, 67,  43];
+  const MUTED  = [122, 114, 104];
+  const PAPER  = [244, 239, 230];
+  const GOOD   = [74,  124, 89];
+  const BLOCK  = [234, 225, 210];
+
+  function checkPage(needed = 10) {
+    if (y + needed > pageH - margin) {
+      doc.addPage();
+      y = margin;
+    }
+  }
+
+  function addText(text, opts = {}) {
+    const {
+      size = 10, color = INK, bold = false,
+      indent = 0, lineH = 6, maxW = contentW
+    } = opts;
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    const lines = doc.splitTextToSize(String(text || ''), maxW - indent);
+    lines.forEach(line => {
+      checkPage(lineH);
+      doc.text(line, margin + indent, y);
+      y += lineH;
+    });
+  }
+
+  function addSpacer(h = 4) { y += h; }
+
+  function addDivider() {
+    checkPage(6);
+    doc.setDrawColor(...MUTED);
+    doc.setLineWidth(0.3);
+    doc.line(margin, y, pageW - margin, y);
+    y += 5;
+  }
+
+  function addBlockBox(label, text, color = BLOCK) {
+    checkPage(14);
+    const lines = doc.splitTextToSize(String(text || ''), contentW - 8);
+    const boxH = lines.length * 5.5 + 10;
+    checkPage(boxH + 4);
+    doc.setFillColor(...color);
+    doc.rect(margin, y, contentW, boxH, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(...MUTED);
+    doc.setFont('helvetica', 'bold');
+    doc.text(label, margin + 4, y + 6);
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.setFont('helvetica', 'normal');
+    let ty = y + 11;
+    lines.forEach(line => {
+      doc.text(line, margin + 4, ty);
+      ty += 5.5;
+    });
+    y += boxH + 4;
+  }
+
+  function addAccentBox(text) {
+    checkPage(14);
+    const lines = doc.splitTextToSize(String(text || ''), contentW - 10);
+    const boxH = lines.length * 5.5 + 10;
+    checkPage(boxH + 4);
+    doc.setFillColor(232, 213, 196);
+    doc.rect(margin, y, contentW, boxH, 'F');
+    doc.setFillColor(...ACCENT);
+    doc.rect(margin, y, 3, boxH, 'F');
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.setFont('helvetica', 'normal');
+    let ty = y + 8;
+    lines.forEach(line => {
+      doc.text(line, margin + 7, ty);
+      ty += 5.5;
+    });
+    y += boxH + 4;
+  }
+
+  function addSectionTag(label) {
+    checkPage(10);
+    doc.setFillColor(...ACCENT);
+    const tagW = doc.getStringUnitWidth(label) * 8 / doc.internal.scaleFactor + 8;
+    doc.rect(margin, y - 4, tagW, 7, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica', 'bold');
+    doc.text(label, margin + 4, y + 1);
+    y += 8;
+  }
+
+  // ── 헤더 ──
+  doc.setFillColor(...INK);
+  doc.rect(0, 0, pageW, 28, 'F');
+  doc.setFontSize(16);
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica', 'bold');
+  doc.text('패턴 분석 리포트', margin, 13);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(200,190,180);
+  doc.text('전지적독자시점  ·  readerreview.vercel.app', margin, 20);
+  doc.setTextColor(160,150,140);
+  doc.text(dateStr, pageW - margin, 20, { align: 'right' });
+  y = 36;
+
+  // ── 섹션 1: 약점 집중 분석 ──
+  addSectionTag('약점 집중 분석');
+  addSpacer(2);
+  addText(w.title, { size: 13, bold: true, color: ACCENT });
+  addSpacer(4);
+  addText(w.body, { size: 10, color: INK, lineH: 5.5 });
+  addSpacer(6);
+  addBlockBox('문제 문단', w.before);
+  addBlockBox('고친 제안', w.after, [220, 220, 220]);
+  addSpacer(2);
+  addText('왜 더 잘 닿는가', { size: 9, bold: true, color: MUTED });
+  addSpacer(2);
+  addText(w.why, { size: 10, color: INK, lineH: 5.5 });
+  addSpacer(8);
+  addDivider();
+
+  // ── 섹션 2: 강점 활용법 ──
+  addSectionTag('강점 활용법');
+  addSpacer(2);
+  addText(s.title, { size: 13, bold: true, color: GOOD });
+  addSpacer(4);
+  addText(s.body, { size: 10, color: INK, lineH: 5.5 });
+  addSpacer(6);
+  addAccentBox(`"${s.example}"`);
+  addText('이렇게 살려보세요', { size: 9, bold: true, color: MUTED });
+  addSpacer(2);
+  addText(s.suggestion, { size: 10, color: INK, lineH: 5.5 });
+  addSpacer(8);
+  addDivider();
+
+  // ── 섹션 3: 다음 글 딱 하나 ──
+  addSectionTag('다음 글 쓸 때 딱 하나만');
+  addSpacer(2);
+  addText(n.title, { size: 13, bold: true, color: INK });
+  addSpacer(6);
+  addAccentBox(n.action);
+  addText('왜 지금 이게 필요한가', { size: 9, bold: true, color: MUTED });
+  addSpacer(2);
+  addText(n.reason, { size: 10, color: INK, lineH: 5.5 });
+  addSpacer(10);
+  addDivider();
+
+  // ── 푸터 ──
+  doc.setFontSize(8);
+  doc.setTextColor(...MUTED);
+  doc.text('전지적독자시점 — 기록은 했는데, 읽히고 있나요?', margin, y);
+
+  doc.save(`패턴분석리포트_${dateStr}.pdf`);
+  showToast('리포트 PDF를 저장했어요 ✓');
+}
+
+
   return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
 </script>
