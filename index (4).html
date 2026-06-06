@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>전지적독자시점</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&display=swap');
+  :root {
+    --ink:#1a1714; --paper:#f4efe6; --paper-deep:#eae1d2; --accent:#c1432b;
+    --accent-soft:#e8d5c4; --muted:#7a7268; --line:#d4c8b6; --good:#4a7c59; --warn:#c1432b;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:'IBM Plex Sans KR',sans-serif; background:var(--paper);
+    background-image:radial-gradient(var(--paper-deep) 1px,transparent 1px);
+    background-size:22px 22px; color:var(--ink); line-height:1.7; min-height:100vh; padding:0 0 80px;
+  }
+  .wrap { max-width:780px; margin:0 auto; padding:0 24px; }
+
+  /* 입장 화면 */
+  #gate { min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .gate-card { background:#fbf8f1; border:1.5px solid var(--ink); border-radius:2px; padding:48px 40px; box-shadow:8px 8px 0 var(--paper-deep); max-width:420px; width:100%; text-align:center; }
+  .gate-card .kicker { font-size:12px; letter-spacing:4px; text-transform:uppercase; color:var(--accent); font-weight:600; margin-bottom:16px; }
+  .gate-card h1 { font-family:'Gowun Batang',serif; font-size:28px; line-height:1.3; margin-bottom:12px; }
+  .gate-card p { font-size:14px; color:var(--muted); margin-bottom:28px; line-height:1.7; }
+  .gate-card input { width:100%; padding:15px; font-family:inherit; font-size:16px; text-align:center; letter-spacing:2px; border:1.5px solid var(--line); border-radius:2px; background:var(--paper); margin-bottom:14px; }
+  .gate-card input:focus { outline:none; border-color:var(--accent); }
+  .gate-card button { width:100%; padding:15px; font-family:inherit; font-size:15px; font-weight:700; letter-spacing:1px; background:var(--ink); color:var(--paper); border:none; border-radius:2px; cursor:pointer; transition:background .2s; }
+  .gate-card button:hover { background:var(--accent); }
+  .gate-err { color:var(--warn); font-size:13px; margin-top:12px; min-height:18px; }
+
+  #app { display:none; }
+
+  header { padding:56px 0 32px; border-bottom:2px solid var(--ink); margin-bottom:32px; }
+  .kicker { font-size:13px; letter-spacing:4px; text-transform:uppercase; color:var(--accent); font-weight:600; margin-bottom:14px; }
+  h1.main { font-family:'Gowun Batang',serif; font-size:44px; line-height:1.15; font-weight:700; margin-bottom:16px; letter-spacing:-1px; }
+  h1.main .em { color:var(--accent); font-style:italic; }
+  .sub { font-size:16px; color:var(--muted); max-width:540px; line-height:1.8; }
+
+  .tabs { display:flex; gap:4px; margin-bottom:28px; }
+  .tab { flex:1; padding:14px; text-align:center; cursor:pointer; font-size:14px; font-weight:600; border:1.5px solid var(--line); background:#fbf8f1; color:var(--muted); border-radius:2px 2px 0 0; transition:all .2s; }
+  .tab.active { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  .tab .count { font-size:11px; opacity:.7; }
+
+  .panel { background:#fbf8f1; border:1.5px solid var(--line); border-radius:2px; padding:28px; box-shadow:6px 6px 0 var(--paper-deep); margin-bottom:28px; }
+  label.field-label { display:block; font-size:13px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
+  textarea { width:100%; min-height:220px; resize:vertical; font-family:'Gowun Batang',serif; font-size:16px; line-height:1.8; padding:18px; border:1.5px solid var(--line); border-radius:2px; background:var(--paper); color:var(--ink); }
+  textarea:focus { outline:none; border-color:var(--accent); }
+  .counter { font-size:13px; color:var(--muted); margin-top:8px; text-align:right; }
+  .counter.ready { color:var(--good); font-weight:600; }
+
+  /* 채널 선택 버튼 */
+  .channel-row { display:flex; gap:8px; margin-top:20px; flex-wrap:wrap; }
+  .ch-btn { flex:1; min-width:100px; padding:12px 8px; font-family:inherit; font-size:13px; font-weight:600;
+    border:1.5px solid var(--line); border-radius:2px; background:#fbf8f1; color:var(--muted);
+    cursor:pointer; transition:all .15s; text-align:center; }
+  .ch-btn:hover { border-color:var(--ink); color:var(--ink); }
+  .ch-btn.active { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  .ch-hint { font-size:12px; color:var(--muted); margin-top:10px; padding:10px 14px; background:var(--paper-deep); border-radius:2px; line-height:1.6; }
+
+  button.run { margin-top:22px; width:100%; padding:18px; font-family:inherit; font-size:16px; font-weight:700; letter-spacing:1px; background:var(--ink); color:var(--paper); border:none; border-radius:2px; cursor:pointer; transition:transform .1s,background .2s; }
+  button.run:hover { background:var(--accent); }
+  button.run:active { transform:translateY(2px); }
+  button.run:disabled { opacity:.5; cursor:not-allowed; }
+
+  .loading { text-align:center; padding:48px 24px; color:var(--muted); font-size:15px; }
+  .loading-label { font-family:'Gowun Batang',serif; font-size:20px; color:var(--ink); margin-bottom:10px; }
+  .loading-sub { font-size:14px; color:var(--muted); }
+
+  #result { display:none; }
+  #result.show { display:block; animation:rise .5s ease both; }
+  .loading .dot { animation:blink 1.4s infinite; }
+  .loading .dot:nth-child(2){animation-delay:.2s} .loading .dot:nth-child(3){animation-delay:.4s}
+  @keyframes blink { 0%,60%,100%{opacity:.2} 30%{opacity:1} }
+  @keyframes rise { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
+
+  .verdict { font-family:'Gowun Batang',serif; font-size:22px; font-weight:700; line-height:1.5; padding:24px 28px; margin-bottom:28px; border-left:5px solid var(--accent); background:var(--accent-soft); }
+  .section-title { font-family:'Gowun Batang',serif; font-size:18px; font-weight:700; margin:32px 0 14px; padding-bottom:8px; border-bottom:1px solid var(--line); }
+  .check { border-bottom:1px solid var(--line); padding:18px 0; }
+  .check:last-child { border-bottom:none; }
+  .check-head { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+  .check-icon { width:26px; height:26px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:#fff; }
+  .pass .check-icon { background:var(--good); } .fail .check-icon { background:var(--warn); }
+  .check-title { font-size:16px; font-weight:600; }
+  .check-body { font-size:15px; color:#4a443c; padding-left:38px; }
+
+  .para { padding:16px 18px; margin-bottom:12px; border-radius:2px; border:1.5px solid var(--line); background:var(--paper); }
+  .para.flagged { border-color:var(--accent); border-left-width:5px; }
+  .para-orig { font-family:'Gowun Batang',serif; font-size:15px; line-height:1.8; white-space:pre-wrap; }
+  .para.flagged .para-orig { opacity:.55; }
+  .para-note { font-size:13px; color:var(--accent); margin-top:10px; font-weight:500; }
+  .para-fix { margin-top:12px; padding:14px 16px; background:var(--ink); color:var(--paper); border-radius:2px; }
+  .para-fix .lbl { font-size:11px; letter-spacing:1px; text-transform:uppercase; opacity:.6; margin-bottom:6px; }
+  .para-fix .txt { font-family:'Gowun Batang',serif; font-size:15px; line-height:1.8; white-space:pre-wrap; }
+  .copy-btn { margin-top:10px; font-size:12px; padding:7px 14px; background:var(--accent-soft); color:var(--ink); border:none; border-radius:2px; cursor:pointer; font-family:inherit; font-weight:600; }
+  .copy-btn:hover { background:var(--accent); color:#fff; }
+  .copy-all { margin-top:20px; width:100%; padding:14px; background:var(--accent); color:#fff; border:none; border-radius:2px; font-family:inherit; font-weight:700; cursor:pointer; }
+
+  .empty { text-align:center; padding:60px 24px; color:var(--muted); }
+  .empty .big { font-family:'Gowun Batang',serif; font-size:20px; color:var(--ink); margin-bottom:10px; }
+  .pat-card { background:#fbf8f1; border:1.5px solid var(--line); border-radius:2px; padding:24px; margin-bottom:16px; box-shadow:4px 4px 0 var(--paper-deep); }
+  .pat-headline { font-family:'Gowun Batang',serif; font-size:19px; font-weight:700; line-height:1.5; margin-bottom:16px; color:var(--accent); }
+  .bar-row { display:flex; align-items:center; gap:12px; margin-bottom:10px; font-size:14px; }
+  .bar-label { width:140px; flex-shrink:0; font-size:13px; }
+  .bar-track { flex:1; height:22px; background:var(--paper-deep); border-radius:2px; overflow:hidden; }
+  .bar-fill { height:100%; background:var(--warn); display:flex; align-items:center; justify-content:flex-end; padding-right:8px; color:#fff; font-size:12px; font-weight:600; }
+  .bar-fill.ok { background:var(--good); }
+  .hist { font-size:13px; color:var(--muted); margin-top:2px; margin-bottom:10px; }
+  .hist-item { padding:10px 0; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:12px; }
+  .hist-item:last-child { border:none; }
+
+  .err { color:var(--warn); padding:16px; border:1px solid var(--warn); border-radius:2px; line-height:1.7; }
+  .new-diag-btn { margin-top:16px; width:100%; padding:16px; font-family:inherit; font-size:15px; font-weight:700; background:var(--paper); color:var(--ink); border:2px solid var(--ink); border-radius:2px; cursor:pointer; transition:all .2s; }
+  .new-diag-btn:hover { background:var(--ink); color:var(--paper); }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--paper); padding:12px 24px; border-radius:2px; font-size:14px; opacity:0; transition:opacity .3s; pointer-events:none; z-index:999; }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<!-- 입장 화면 -->
+<div id="gate">
+  <div class="gate-card">
+    <div class="kicker">전지적독자시점</div>
+    <h1>기록은 했는데,<br>읽히고 있나요?</h1>
+    <p>내 글을 독자 입장에서 읽어드릴게요.<br>초대받은 분만 입장할 수 있어요.</p>
+    <input type="password" id="passInput" placeholder="비밀코드 입력" onkeydown="if(event.key==='Enter')enter()">
+    <button onclick="enter()">입장하기</button>
+    <div class="gate-err" id="gateErr"></div>
+  </div>
+</div>
+
+<!-- 앱 화면 -->
+<div id="app">
+  <div class="wrap">
+    <header>
+      <div class="kicker">전지적독자시점</div>
+      <h1 class="main">기록은 했는데,<br><span class="em">읽히고</span> 있나요?</h1>
+      <p class="sub">당신의 경험이 독자한테 닿는 글인지, 독자 입장에서 읽어드려요. 진단이 쌓이면 당신이 매번 놓치는 패턴도 보여요.</p>
+    </header>
+
+    <div class="tabs">
+      <div class="tab active" id="tab-diag" onclick="switchTab('diag')">글 진단</div>
+      <div class="tab" id="tab-pat" onclick="switchTab('pat')">내 패턴 <span class="count" id="patCount"></span></div>
+    </div>
+
+    <div id="view-diag">
+      <div class="panel">
+        <label class="field-label">진단할 글</label>
+        <textarea id="input" placeholder="SNS에 올린 글, 또는 올리려고 쓴 글을 붙여넣으세요." oninput="updateCounter()"></textarea>
+        <div id="counter" class="counter">100자 이상이면 진단할 수 있어요</div>
+
+        <label class="field-label" style="margin-top:20px">어디에 올린 글인가요?</label>
+        <div class="channel-row">
+          <button class="ch-btn active" data-ch="블로그" onclick="selectChannel(this)">블로그 · 브런치</button>
+          <button class="ch-btn" data-ch="링크드인" onclick="selectChannel(this)">링크드인</button>
+          <button class="ch-btn" data-ch="인스타그램" onclick="selectChannel(this)">인스타그램</button>
+          <button class="ch-btn" data-ch="스레드" onclick="selectChannel(this)">스레드</button>
+        </div>
+        <div class="ch-hint" id="chHint">긴 글, 에세이 형식. 구조와 흐름이 중요하고 독자가 끝까지 읽게 만드는가가 핵심이에요.</div>
+
+        <button class="run" id="runBtn" onclick="diagnose()">독자 입장에서 읽어줘</button>
+      </div>
+      <div id="loading" style="display:none">
+        <div class="loading">
+          <div class="loading-label">독자 입장에서 읽는 중이에요<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
+          <div class="loading-sub">글 길이에 따라 5~15초 정도 걸려요</div>
+        </div>
+      </div>
+      <div id="result"></div>
+    </div>
+
+    <div id="view-pat" style="display:none"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function startLoading() {}
+function stopLoading() {}
+const CHANNEL_CONFIG = {
+  '블로그': {
+    hint: '긴 글, 에세이 형식. 구조와 흐름이 중요하고 독자가 끝까지 읽게 만드는가가 핵심이에요.',
+    checkIds: ['훅과 도입부', '작가 vs 독자', '구조와 흐름', '그래서 나는 뭘?', '구체성'],
+    criteria: `1. 훅과 도입부: 제목/첫 문단이 "왜 이 글을 읽어야 하는가"를 전달하는가? 일기 첫 줄처럼 시작하지는 않는가?
+2. 작가 vs 독자: 작가 본인만 아는 고유명사·맥락이 독자를 밀어내지는 않는가? 자기 감정 일지에 머물지 않는가?
+3. 구조와 흐름: 소제목/단락 구분으로 독자가 스캔할 수 있는가? 논리적 흐름이 있어 끝까지 읽히는가?
+4. 그래서 나는 뭘?: 글을 다 읽은 독자가 얻는 것(교훈·관점·행동)이 있는가? 착지점이 명확한가?
+5. 구체성: 추상적 감상 대신 구체적 장면·숫자·사례가 있는가?`
+  },
+  '링크드인': {
+    hint: '첫 1~2줄이 "더 보기" 버튼 전에 독자를 잡아야 해요. 전문성과 개인 경험의 균형이 핵심이에요.',
+    checkIds: ['첫 줄 훅', '전문성 vs 자기자랑', '그래서 나는 뭘?', '댓글·저장 욕구', '구체성'],
+    criteria: `1. 첫 줄 훅: 첫 1~2줄이 "더 보기" 클릭 전에 독자를 멈추게 하는가? "배운 점 3가지" 같은 AI 슬롭 구조는 아닌가?
+2. 전문성 vs 자기자랑: 자기 경험에서 독자가 가져갈 인사이트가 있는가? 자랑이나 결론만 나열하지는 않는가?
+3. 그래서 나는 뭘?: 독자가 읽고 나서 생각이 바뀌거나 행동하고 싶어지는가?
+4. 댓글·저장 욕구: 공감·반박·공유하고 싶은 포인트가 있는가? 대화를 여는 질문이나 여지가 있는가?
+5. 구체성: 수치·날짜·실제 사건 등 구체적 근거가 있는가? 막연한 회고로 끝나지 않는가?`
+  },
+  '인스타그램': {
+    hint: '이미지가 주, 텍스트는 보조예요. 첫 줄이 "더 보기" 전에 독자를 잡아야 하고, 저장·공유 욕구가 핵심이에요.',
+    checkIds: ['첫 줄 훅', '간결함', '그래서 나는 뭘?', '저장·공유 욕구', '진정성'],
+    criteria: `1. 첫 줄 훅: 피드에서 펼치지 않고 보이는 첫 줄이 스크롤을 멈추게 하는가? 5~15단어 안에 핵심이 있는가?
+2. 간결함: 불필요한 설명이 없는가? 길어서 읽기 포기하게 만들지는 않는가?
+3. 그래서 나는 뭘?: 읽고 나서 저장하거나 누군가에게 보내고 싶은 한 줄이 있는가?
+4. 저장·공유 욕구: "나도 이래" 공감이나 "이거 알아야 해" 정보가 있는가? 해시태그와 별개로 본문 자체의 힘이 있는가?
+5. 진정성: 광고·홍보 느낌 없이 진짜 경험에서 나온 목소리인가? 포장이 지나쳐 날것의 매력이 죽지는 않았는가?`
+  },
+  '스레드': {
+    hint: '텍스트가 주예요. 짧고 날것의 과정 공유가 강점이에요. 너무 다듬으면 오히려 죽어요.',
+    checkIds: ['한 방 임팩트', '날것의 진정성', '대화 욕구', '간결함', '포인트 명확성'],
+    criteria: `1. 한 방 임팩트: 핵심 메시지가 한 문장으로 읽히는가? 읽는 순간 "맞아" 또는 "어?" 하게 만드는가?
+2. 날것의 진정성: 너무 다듬어져서 솔직함이 사라지지는 않았는가? 과정·실패·의문을 그대로 드러내는가?
+3. 대화 욕구: "나도 이래" 또는 "근데 왜?"라고 댓글 달고 싶어지는가? 독자가 끼어들 틈이 있는가?
+4. 간결함: 스레드에서 읽기 적절한 길이인가? 불필요한 설명으로 흐름이 끊기지는 않는가?
+5. 포인트 명확성: 이 글이 말하고 싶은 게 하나인가? 너무 많은 걸 담으려다 흐릿해지지는 않았는가?`
+  }
+};
+
+let selectedChannel = '블로그';
+let history = [];
+let passcode = '';
+
+function selectChannel(btn) {
+  document.querySelectorAll('.ch-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedChannel = btn.dataset.ch;
+  document.getElementById('chHint').textContent = CHANNEL_CONFIG[selectedChannel].hint;
+}
+
+async function enter() {
+  const code = document.getElementById('passInput').value.trim();
+  const err = document.getElementById('gateErr');
+  if (!code) { err.textContent = '비밀코드를 입력해 주세요.'; return; }
+  err.textContent = '확인 중...';
+  try {
+    const r = await fetch('/api/diagnose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode: code, prompt: '코드 확인용. ok 라고만 답해.' })
+    });
+    if (r.status === 401) { err.textContent = '비밀코드가 올바르지 않습니다.'; return; }
+    if (!r.ok) { err.textContent = '서버 문제 (' + r.status + '). 잠시 후 다시 시도해 주세요.'; return; }
+    const d = await r.json();
+    if (d.error) { err.textContent = d.error + (d.detail ? ' — ' + String(d.detail).slice(0,120) : ''); return; }
+    passcode = code;
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+  } catch (e) {
+    err.textContent = '연결 실패. 인터넷을 확인해 주세요.';
+  }
+}
+
+function switchTab(t) {
+  document.getElementById('tab-diag').classList.toggle('active', t==='diag');
+  document.getElementById('tab-pat').classList.toggle('active', t==='pat');
+  document.getElementById('view-diag').style.display = t==='diag' ? 'block':'none';
+  document.getElementById('view-pat').style.display = t==='pat' ? 'block':'none';
+  if (t==='pat') renderPattern();
+}
+
+async function diagnose() {
+  const text = document.getElementById('input').value.trim();
+  const btn = document.getElementById('runBtn');
+  const loading = document.getElementById('loading');
+  const result = document.getElementById('result');
+  const cfg = CHANNEL_CONFIG[selectedChannel];
+
+  if (text.length < 100) { showToast(`지금 ${text.length}자예요. 100자 이상이면 진단할 수 있어요.`); return; }
+
+  btn.disabled = true;
+  result.classList.remove('show'); result.innerHTML = '';
+  loading.style.display = 'block';
+  startLoading();
+
+  const checkIdsStr = cfg.checkIds.join(', ');
+
+  const prompt = `너는 자기 경험을 SNS에 기록하는 사람들의 글을 읽어온 날카로운 독자이자 편집자다.
+핵심 철학: "기록은 했는데, 읽히고 있나요?" — 작가의 경험이 독자한테 닿는 글인지를 본다.
+채널: ${selectedChannel}
+
+이 채널의 진단 기준:
+${cfg.criteria}
+
+원문을 문단 단위로 나누고, 문제 있는 문단은 직접 고쳐쓴다.
+아래 JSON만 출력 (백틱·마크다운·설명 없이, JSON 문자열 값 안에 줄바꿈 금지):
+{
+  "title": "이 글을 5단어 이내로 요약",
+  "verdict": "독자 입장에서 한 문장 핵심 진단. 직설적으로.",
+  "checks": [
+    {"id":"${cfg.checkIds[0]}","pass":true,"comment":"진단 한두 문장"},
+    {"id":"${cfg.checkIds[1]}","pass":false,"comment":"..."},
+    {"id":"${cfg.checkIds[2]}","pass":false,"comment":"..."},
+    {"id":"${cfg.checkIds[3]}","pass":true,"comment":"..."},
+    {"id":"${cfg.checkIds[4]}","pass":true,"comment":"..."}
+  ],
+  "paragraphs": [
+    {"orig":"원문 문단 그대로","flagged":false,"note":"","fix":""},
+    {"orig":"문제있는 원문 문단","flagged":true,"note":"왜 독자에게 안 닿는지 짧게","fix":"독자한테 닿게 고쳐쓴 문단"}
+  ]
+}
+checks의 id는 반드시 이 순서 그대로: ${checkIdsStr}`;
+
+  try {
+    const response = await fetch('/api/diagnose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode, prompt, article: text })
+    });
+    if (response.status === 401) throw new Error('비밀코드가 만료됐어요. 새로고침 후 다시 입장해 주세요.');
+    if (!response.ok) throw new Error('통신 실패 (' + response.status + ')');
+    const data = await response.json();
+    if (data.error) throw new Error(data.error + (data.detail ? ' — ' + String(data.detail).slice(0,160) : ''));
+    let raw = (data.text || '').replace(/```json|```/g, '').trim();
+    const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+    if (s === -1 || e === -1) throw new Error('응답을 읽지 못했어요. 다시 눌러보세요. (앞부분: ' + raw.slice(0,100) + ')');
+    let jsonStr = raw.slice(s, e + 1);
+    let rr;
+    try {
+      rr = JSON.parse(jsonStr);
+    } catch(pe) {
+      jsonStr = jsonStr.replace(/[\r\n]+/g, ' ');
+      try { rr = JSON.parse(jsonStr); }
+      catch(pe2) { throw new Error('결과 형식 오류. 다시 눌러보세요.'); }
+    }
+    // 원문에서 첫 문단과 flagged 문단들만 뽑아서 저장 (패턴 분석용)
+    const firstPara = (rr.paragraphs||[])[0]?.orig || '';
+    const flaggedParas = (rr.paragraphs||[])
+      .filter(p => p.flagged)
+      .map(p => ({ orig: p.orig, fix: p.fix, note: p.note }));
+    const strongParas = (rr.paragraphs||[])
+      .filter(p => !p.flagged && p.orig.length > 20)
+      .slice(0, 2)
+      .map(p => p.orig);
+
+    history.push({
+      title: rr.title || '제목 없음',
+      channel: selectedChannel,
+      checks: rr.checks.map(c=>({id:c.id, pass:c.pass, comment:c.comment})),
+      firstPara,
+      flaggedParas,
+      strongParas,
+      date: new Date()
+    });
+    updateCount();
+    render(rr, cfg.checkIds);
+  } catch (err2) {
+    loading.style.display = 'none';
+    result.innerHTML = '<div class="err"><b>진단을 완성하지 못했어요.</b><br>원인: ' + esc(err2.message) +
+      '<br><br>글이 매우 길면 절반씩 나눠 넣어보세요.</div>';
+    result.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    loading.style.display = 'none';
+    stopLoading();
+  }
+}
+
+function render(r, checkIds) {
+  const result = document.getElementById('result');
+  let html = `<div class="verdict">${esc(r.verdict)}</div>`;
+  html += `<div class="section-title">독자 입장에서 본 진단</div>`;
+  r.checks.forEach(c => {
+    html += `<div class="check ${c.pass?'pass':'fail'}">
+      <div class="check-head"><div class="check-icon">${c.pass?'✓':'!'}</div><div class="check-title">${esc(c.id)}</div></div>
+      <div class="check-body">${esc(c.comment)}</div></div>`;
+  });
+  html += `<div class="section-title">문단별 고쳐쓰기</div>`;
+  let fixedFull = [];
+  (r.paragraphs||[]).forEach(p => {
+    fixedFull.push(p.flagged && p.fix ? p.fix : p.orig);
+    html += `<div class="para ${p.flagged?'flagged':''}">
+      <div class="para-orig">${esc(p.orig)}</div>`;
+    if (p.flagged) {
+      html += `<div class="para-note">↓ ${esc(p.note)}</div>
+        <div class="para-fix">
+          <div class="lbl">독자한테 닿게 고친 제안</div>
+          <div class="txt">${esc(p.fix)}</div>
+          <button class="copy-btn" onclick="copyText(this, ${JSON.stringify(p.fix).replace(/"/g,'&quot;')})">이 문단 복사</button>
+        </div>`;
+    }
+    html += `</div>`;
+  });
+  html += `<button class="copy-all" onclick="copyText(this, ${JSON.stringify(fixedFull.join('\n\n')).replace(/"/g,'&quot;')})">고친 글 전체 복사</button>`;
+  html += `<button class="new-diag-btn" onclick="resetDiagnose()">+ 새 글 진단하기</button>`;
+  result.innerHTML = html;
+  result.classList.add('show');
+}
+
+function resetDiagnose() {
+  document.getElementById('input').value = '';
+  document.getElementById('counter').textContent = '100자 이상이면 진단할 수 있어요';
+  document.getElementById('counter').classList.remove('ready');
+  const result = document.getElementById('result');
+  result.classList.remove('show');
+  result.innerHTML = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setTimeout(() => document.getElementById('input').focus(), 400);
+}
+
+function renderPattern() {
+  const v = document.getElementById('view-pat');
+  if (history.length < 2) {
+    v.innerHTML = `<div class="empty">
+      <div class="big">아직 패턴을 볼 글이 부족해요</div>
+      글을 2편 이상 진단하면, 당신이 매번 어디서 독자를 잃는지 리포트를 받을 수 있어요.<br>지금까지 ${history.length}편 진단했어요.
+    </div>`;
+    return;
+  }
+
+  let html = `<div class="pat-card">
+    <div class="pat-headline" style="color:var(--ink)">패턴 분석에 포함할 글을 선택하세요</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">선택한 글들만 가지고 내 패턴을 분석해요. 3편 이상 선택하면 분석 정확도가 올라가요.</div>
+
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);margin-bottom:8px;">
+      <input type="checkbox" id="selectAllCheck" style="width:16px;height:16px;cursor:pointer;" onchange="toggleSelectAll(this)">
+      <label for="selectAllCheck" style="font-size:14px;font-weight:600;cursor:pointer;">전체 선택</label>
+      <span id="selectWarning" style="font-size:12px;color:var(--warn);margin-left:8px;display:none;">10편 이상은 분석 품질이 낮아질 수 있어요</span>
+    </div>`;
+
+  history.slice().reverse().forEach((h, i) => {
+    const realIdx = history.length - 1 - i;
+    const fails = h.checks.filter(c=>!c.pass).map(c=>c.id);
+    html += `<div class="hist-item" style="align-items:center;">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;">
+        <input type="checkbox" class="pat-check" data-idx="${realIdx}" style="width:16px;height:16px;cursor:pointer;" onchange="updatePatternBtn()">
+        <span>
+          <span style="font-weight:600;">${esc(h.title)}</span>
+          <span style="color:var(--muted);font-size:13px;"> · ${h.channel}</span>
+          <br>
+          <span style="font-size:12px;color:${fails.length?'var(--warn)':'var(--good)'};">${fails.length ? fails.join(', ')+' 걸림' : '모두 통과'}</span>
+        </span>
+      </label>
+    </div>`;
+  });
+
+  html += `<div id="patSelectHint" style="font-size:12px;color:var(--muted);margin-top:12px;min-height:16px;"></div>`;
+  html += `<button class="run" id="patAnalyzeBtn" onclick="analyzePattern()" disabled style="margin-top:16px;opacity:.4;">
+    선택한 글로 패턴 분석
+  </button>`;
+  html += `</div>`;
+  html += `<div id="patResult"></div>`;
+  v.innerHTML = html;
+}
+
+function updatePatternBtn() {
+  const checks = document.querySelectorAll('.pat-check');
+  const checkedEls = document.querySelectorAll('.pat-check:checked');
+  const checked = checkedEls.length;
+  const btn = document.getElementById('patAnalyzeBtn');
+  const hint = document.getElementById('patSelectHint');
+  const warning = document.getElementById('selectWarning');
+  const allCheck = document.getElementById('selectAllCheck');
+  if (!btn) return;
+
+  // 전체 선택 체크박스 동기화
+  if (allCheck) {
+    allCheck.indeterminate = checked > 0 && checked < checks.length;
+    allCheck.checked = checked === checks.length && checks.length > 0;
+  }
+
+  // 10편 이상 경고
+  if (warning) warning.style.display = checked >= 10 ? 'inline' : 'none';
+
+  // 2편 미만이면 버튼 비활성
+  btn.disabled = checked < 2;
+  btn.style.opacity = checked < 2 ? '.4' : '1';
+
+  // 안내 문구
+  if (hint) {
+    if (checked === 0) hint.textContent = '';
+    else if (checked < 3) hint.textContent = `💡 3편 이상 선택하면 분석 정확도가 더 높아져요 (지금 ${checked}편 선택됨)`;
+    else hint.textContent = `${checked}편 선택됨`;
+  }
+
+  btn.textContent = checked < 2
+    ? `선택한 글로 패턴 분석 (최소 2편 선택 필요)`
+    : `선택한 글로 패턴 분석 (${checked}편)`;
+}
+
+function toggleSelectAll(el) {
+  const checks = document.querySelectorAll('.pat-check');
+  checks.forEach(c => c.checked = el.checked);
+  updatePatternBtn();
+}
+
+async function analyzePattern() {
+  const checked = [...document.querySelectorAll('.pat-check:checked')];
+  const selected = checked.map(cb => history[parseInt(cb.dataset.idx)]);
+
+  // 집계
+  const allIds = [...new Set(selected.flatMap(h => h.checks.map(c => c.id)))];
+  const failRate = {};
+  allIds.forEach(id => failRate[id] = 0);
+  selected.forEach(h => h.checks.forEach(c => {
+    if (!c.pass && failRate[c.id] !== undefined) failRate[c.id]++;
+  }));
+  const total = selected.length;
+  const sorted = allIds.slice().sort((a,b) => failRate[b] - failRate[a]);
+  const worst = sorted[0];
+  const worstPct = Math.round(failRate[worst] / total * 100);
+  const best = sorted[sorted.length - 1];
+  const bestFailed = failRate[best] > 0;
+
+  // 막대그래프 먼저 보여주기
+  let html = `<div class="pat-card">
+    <div class="pat-headline">선택한 ${total}편에서 발견한 당신의 패턴</div>
+    <div style="font-size:16px;line-height:1.7;margin-bottom:20px;padding:16px;background:var(--accent-soft);border-left:4px solid var(--accent);font-family:'Gowun Batang',serif;">
+      당신은 <b>「${esc(worst)}」</b>에서 가장 자주 독자를 잃어요.
+      ${worstPct === 100 ? '선택한 글 전부에서 이 항목이 걸렸어요.' : `${total}편 중 ${failRate[worst]}편에서 걸렸어요 (${worstPct}%).`}
+    </div>`;
+  sorted.forEach(id => {
+    const pct = Math.round(failRate[id] / total * 100);
+    const passCount = total - failRate[id];
+    html += `<div class="bar-row">
+      <div class="bar-label">${esc(id)}</div>
+      <div class="bar-track"><div class="bar-fill ${pct<40?'ok':''}" style="width:${Math.max(pct,6)}%">${pct}%</div></div>
+    </div>
+    <div class="hist">${passCount}/${total}편 통과</div>`;
+  });
+  html += `</div>`;
+  html += `<div id="patDeepResult"><div class="loading" style="padding:32px;text-align:center;color:var(--muted);">당신의 글에서 직접 찾는 중<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div></div>`;
+  document.getElementById('patResult').innerHTML = html;
+  document.getElementById('patResult').scrollIntoView({ behavior: 'smooth' });
+
+  // Claude한테 넘길 데이터 구성
+  const articleSummaries = selected.map((h, i) => {
+    const failedItems = h.checks.filter(c=>!c.pass).map(c=>c.id);
+    const passedItems = h.checks.filter(c=>c.pass).map(c=>c.id);
+    return `[글 ${i+1}] 제목: ${h.title} / 채널: ${h.channel}
+걸린 항목: ${failedItems.join(', ') || '없음'}
+통과 항목: ${passedItems.join(', ') || '없음'}
+첫 문단: "${h.firstPara}"
+문제 있던 문단 예시: ${h.flaggedParas.slice(0,2).map(p=>`"${p.orig}" → 고친 제안: "${p.fix}"`).join(' / ')}
+잘 쓴 문단 예시: ${h.strongParas.map(p=>`"${p}"`).join(' / ') || '없음'}`;
+  }).join('\n\n');
+
+  const patternPrompt = `너는 자기 경험을 SNS에 기록하는 사람들의 글을 오래 읽어온 편집자다.
+아래는 한 사람이 쓴 ${total}편의 글 진단 결과야. 이 사람의 글쓰기 패턴을 분석해서 구체적인 리포트를 줘.
+
+진단 데이터:
+${articleSummaries}
+
+패턴 요약:
+- 가장 자주 걸린 항목: ${worst} (${worstPct}%)
+- ${bestFailed ? `모든 항목에서 걸림이 있었음` : `강점 항목: ${best} (전 편 통과)`}
+
+아래 JSON만 출력 (백틱·설명 없이):
+{
+  "weakness_analysis": {
+    "title": "약점 집중 분석 제목 (예: '당신의 글은 왜 첫 줄에서 독자를 잃는가')",
+    "body": "이 사람의 글에서 직접 찾은 근거를 들어 왜 이 항목이 반복적으로 걸리는지 설명. 일반론 금지. 반드시 위 글 데이터에서 구체적인 문장이나 패턴을 인용해서 말할 것.",
+    "before": "이 사람의 실제 글에서 문제가 된 문장 또는 문단 (짧게)",
+    "after": "그 문장을 독자한테 닿게 고친 제안",
+    "why": "왜 고친 버전이 더 잘 닿는지 이유 (예시와 함께 설명. '더 구체적이기 때문' 같은 광범위한 말 금지)"
+  },
+  "strength_analysis": {
+    "title": "강점 활용법 제목",
+    "body": "이 사람이 잘하는 것을 실제 글에서 찾아서 설명. 그 강점이 지금 어디서 낭비되고 있는지, 어떻게 하면 더 앞으로 당길 수 있는지 구체적으로.",
+    "example": "강점이 잘 발휘된 실제 문장 인용",
+    "suggestion": "이 강점을 더 잘 살리는 구체적인 방법"
+  },
+  "next_action": {
+    "title": "다음 글 쓸 때 딱 하나만",
+    "action": "매우 구체적인 행동 하나. '더 잘 써보세요' 같은 말 절대 금지. 예: '다음 글 초안을 다 쓰고 나서, 가장 구체적인 숫자나 장면이 있는 문장을 찾아 첫 줄로 올려보세요.'",
+    "reason": "왜 이게 이 사람한테 지금 당장 필요한지"
+  }
+}`;
+
+  try {
+    const response = await fetch('/api/diagnose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode, prompt: patternPrompt })
+    });
+    if (!response.ok) throw new Error('통신 실패');
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    let raw = (data.text || '').replace(/```json|```/g, '').trim();
+    const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+    if (s === -1 || e === -1) throw new Error('응답 형식 오류');
+    let rr;
+    try { rr = JSON.parse(raw.slice(s, e+1)); }
+    catch(pe) {
+      const cleaned = raw.slice(s, e+1).replace(/[\r\n]+/g, ' ');
+      rr = JSON.parse(cleaned);
+    }
+    renderPatternDeep(rr);
+  } catch(err) {
+    document.getElementById('patDeepResult').innerHTML =
+      `<div class="err">리포트를 불러오지 못했어요: ${esc(err.message)}</div>`;
+  }
+}
+
+function renderPatternDeep(r) {
+  const w = r.weakness_analysis;
+  const s = r.strength_analysis;
+  const n = r.next_action;
+
+  let html = '';
+
+  // 약점 집중 분석
+  html += `<div class="pat-card">
+    <div class="pat-headline">${esc(w.title)}</div>
+    <p style="font-size:15px;line-height:1.8;margin-bottom:20px;color:#4a443c;">${esc(w.body)}</p>
+    <div class="para flagged">
+      <div class="para-orig" style="opacity:.55;">${esc(w.before)}</div>
+      <div class="para-note">↓ 이렇게 바꾸면</div>
+      <div class="para-fix">
+        <div class="lbl">제안</div>
+        <div class="txt">${esc(w.after)}</div>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding:14px 16px;background:var(--paper-deep);border-radius:2px;font-size:14px;line-height:1.7;">
+      <b>왜 더 잘 닿는가</b><br>${esc(w.why)}
+    </div>
+  </div>`;
+
+  // 강점 활용법
+  html += `<div class="pat-card">
+    <div class="pat-headline">${esc(s.title)}</div>
+    <p style="font-size:15px;line-height:1.8;margin-bottom:16px;color:#4a443c;">${esc(s.body)}</p>
+    <div style="padding:14px 18px;background:var(--paper);border:1.5px solid var(--line);border-radius:2px;font-family:'Gowun Batang',serif;font-size:15px;line-height:1.8;margin-bottom:14px;">
+      "${esc(s.example)}"
+    </div>
+    <div style="padding:14px 16px;background:var(--paper-deep);border-radius:2px;font-size:14px;line-height:1.7;">
+      <b>이렇게 살려보세요</b><br>${esc(s.suggestion)}
+    </div>
+  </div>`;
+
+  // 다음 글 딱 하나
+  html += `<div class="pat-card" style="border-color:var(--ink);border-width:2px;">
+    <div class="kicker" style="margin-bottom:10px;">다음 글 쓸 때 딱 하나만</div>
+    <div class="pat-headline" style="color:var(--ink);margin-bottom:14px;">${esc(n.title)}</div>
+    <div style="font-family:'Gowun Batang',serif;font-size:18px;line-height:1.8;padding:18px;background:var(--accent-soft);border-left:5px solid var(--accent);margin-bottom:14px;">
+      ${esc(n.action)}
+    </div>
+    <p style="font-size:14px;color:var(--muted);line-height:1.7;">${esc(n.reason)}</p>
+  </div>`;
+
+  document.getElementById('patDeepResult').innerHTML = html;
+  document.getElementById('patDeepResult').scrollIntoView({ behavior: 'smooth' });
+
+  // PDF 저장 버튼 추가
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'new-diag-btn';
+  saveBtn.style.cssText = 'margin-top:8px;background:var(--ink);color:var(--paper);border-color:var(--ink);';
+  saveBtn.textContent = '📄 패턴 분석 리포트 저장 (PDF)';
+  saveBtn.onclick = () => savePatternPDF(r);
+  document.getElementById('patDeepResult').appendChild(saveBtn);
+}
+
+function updateCount() {
+  document.getElementById('patCount').textContent = history.length ? `(${history.length})` : '';
+}
+
+function updateCounter() {
+  const n = document.getElementById('input').value.trim().length;
+  const el = document.getElementById('counter');
+  if (n === 0) { el.textContent = '100자 이상이면 진단할 수 있어요'; el.classList.remove('ready'); }
+  else if (n < 100) { el.textContent = `지금 ${n}자 · 100자 이상이면 진단할 수 있어요`; el.classList.remove('ready'); }
+  else { el.textContent = `지금 ${n}자 · 진단 가능`; el.classList.add('ready'); }
+}
+
+function copyText(btn, t) {
+  navigator.clipboard.writeText(t).then(() => {
+    const o = btn.textContent;
+    btn.textContent = '복사됨 ✓';
+    setTimeout(() => btn.textContent = o, 1500);
+  });
+}
+
+function showToast(m) {
+  const t = document.getElementById('toast');
+  t.textContent = m;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+function savePatternPDF(r) {
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) { showToast('PDF 라이브러리 로딩 중이에요. 잠시 후 다시 눌러보세요.'); return; }
+
+  const w = r.weakness_analysis;
+  const s = r.strength_analysis;
+  const n = r.next_action;
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  const contentW = pageW - margin * 2;
+  let y = margin;
+
+  // 색상 팔레트
+  const INK    = [26,  23,  20];
+  const ACCENT = [193, 67,  43];
+  const MUTED  = [122, 114, 104];
+  const PAPER  = [244, 239, 230];
+  const GOOD   = [74,  124, 89];
+  const BLOCK  = [234, 225, 210];
+
+  function checkPage(needed = 10) {
+    if (y + needed > pageH - margin) {
+      doc.addPage();
+      y = margin;
+    }
+  }
+
+  function addText(text, opts = {}) {
+    const {
+      size = 10, color = INK, bold = false,
+      indent = 0, lineH = 6, maxW = contentW
+    } = opts;
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    const lines = doc.splitTextToSize(String(text || ''), maxW - indent);
+    lines.forEach(line => {
+      checkPage(lineH);
+      doc.text(line, margin + indent, y);
+      y += lineH;
+    });
+  }
+
+  function addSpacer(h = 4) { y += h; }
+
+  function addDivider() {
+    checkPage(6);
+    doc.setDrawColor(...MUTED);
+    doc.setLineWidth(0.3);
+    doc.line(margin, y, pageW - margin, y);
+    y += 5;
+  }
+
+  function addBlockBox(label, text, color = BLOCK) {
+    checkPage(14);
+    const lines = doc.splitTextToSize(String(text || ''), contentW - 8);
+    const boxH = lines.length * 5.5 + 10;
+    checkPage(boxH + 4);
+    doc.setFillColor(...color);
+    doc.rect(margin, y, contentW, boxH, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(...MUTED);
+    doc.setFont('helvetica', 'bold');
+    doc.text(label, margin + 4, y + 6);
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.setFont('helvetica', 'normal');
+    let ty = y + 11;
+    lines.forEach(line => {
+      doc.text(line, margin + 4, ty);
+      ty += 5.5;
+    });
+    y += boxH + 4;
+  }
+
+  function addAccentBox(text) {
+    checkPage(14);
+    const lines = doc.splitTextToSize(String(text || ''), contentW - 10);
+    const boxH = lines.length * 5.5 + 10;
+    checkPage(boxH + 4);
+    doc.setFillColor(232, 213, 196);
+    doc.rect(margin, y, contentW, boxH, 'F');
+    doc.setFillColor(...ACCENT);
+    doc.rect(margin, y, 3, boxH, 'F');
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.setFont('helvetica', 'normal');
+    let ty = y + 8;
+    lines.forEach(line => {
+      doc.text(line, margin + 7, ty);
+      ty += 5.5;
+    });
+    y += boxH + 4;
+  }
+
+  function addSectionTag(label) {
+    checkPage(10);
+    doc.setFillColor(...ACCENT);
+    const tagW = doc.getStringUnitWidth(label) * 8 / doc.internal.scaleFactor + 8;
+    doc.rect(margin, y - 4, tagW, 7, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica', 'bold');
+    doc.text(label, margin + 4, y + 1);
+    y += 8;
+  }
+
+  // ── 헤더 ──
+  doc.setFillColor(...INK);
+  doc.rect(0, 0, pageW, 28, 'F');
+  doc.setFontSize(16);
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica', 'bold');
+  doc.text('패턴 분석 리포트', margin, 13);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(200,190,180);
+  doc.text('전지적독자시점  ·  readerreview.vercel.app', margin, 20);
+  doc.setTextColor(160,150,140);
+  doc.text(dateStr, pageW - margin, 20, { align: 'right' });
+  y = 36;
+
+  // ── 섹션 1: 약점 집중 분석 ──
+  addSectionTag('약점 집중 분석');
+  addSpacer(2);
+  addText(w.title, { size: 13, bold: true, color: ACCENT });
+  addSpacer(4);
+  addText(w.body, { size: 10, color: INK, lineH: 5.5 });
+  addSpacer(6);
+  addBlockBox('문제 문단', w.before);
+  addBlockBox('고친 제안', w.after, [220, 220, 220]);
+  addSpacer(2);
+  addText('왜 더 잘 닿는가', { size: 9, bold: true, color: MUTED });
+  addSpacer(2);
+  addText(w.why, { size: 10, color: INK, lineH: 5.5 });
+  addSpacer(8);
+  addDivider();
+
+  // ── 섹션 2: 강점 활용법 ──
+  addSectionTag('강점 활용법');
+  addSpacer(2);
+  addText(s.title, { size: 13, bold: true, color: GOOD });
+  addSpacer(4);
+  addText(s.body, { size: 10, color: INK, lineH: 5.5 });
+  addSpacer(6);
+  addAccentBox(`"${s.example}"`);
+  addText('이렇게 살려보세요', { size: 9, bold: true, color: MUTED });
+  addSpacer(2);
+  addText(s.suggestion, { size: 10, color: INK, lineH: 5.5 });
+  addSpacer(8);
+  addDivider();
+
+  // ── 섹션 3: 다음 글 딱 하나 ──
+  addSectionTag('다음 글 쓸 때 딱 하나만');
+  addSpacer(2);
+  addText(n.title, { size: 13, bold: true, color: INK });
+  addSpacer(6);
+  addAccentBox(n.action);
+  addText('왜 지금 이게 필요한가', { size: 9, bold: true, color: MUTED });
+  addSpacer(2);
+  addText(n.reason, { size: 10, color: INK, lineH: 5.5 });
+  addSpacer(10);
+  addDivider();
+
+  // ── 푸터 ──
+  doc.setFontSize(8);
+  doc.setTextColor(...MUTED);
+  doc.text('전지적독자시점 — 기록은 했는데, 읽히고 있나요?', margin, y);
+
+  doc.save(`패턴분석리포트_${dateStr}.pdf`);
+  showToast('리포트 PDF를 저장했어요 ✓');
+}
+
+
+  return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+</script>
+</body>
+</html>
